@@ -16,6 +16,7 @@
   --green:#30D158;--green-dim:rgba(48,209,88,0.15);
   --red:#FF453A;--red-dim:rgba(255,69,58,0.15);
   --orange:#FF9F0A;--orange-dim:rgba(255,159,10,0.15);
+  --gold:#FFD60A;--gold-dim:rgba(255,214,10,0.13);
   --purple:#BF5AF2;--purple-dim:rgba(191,90,242,0.15);
   --blue:#64D2FF;--blue-dim:rgba(100,210,255,0.15);
   --sans:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif;
@@ -199,6 +200,7 @@ select option{background:#1c1c20;}
     <div class="hero-sub">
       <span class="hero-chip" style="color:var(--green)">▲ <b id="hero-ing">$0</b> ingresos</span>
       <span class="hero-chip" style="color:var(--orange)">▼ <b id="hero-fijo">$0</b> obligatorios</span>
+      <span class="hero-chip" style="color:var(--gold)">▼ <b id="hero-egreso">$0</b> egresos</span>
     </div>
   </div>
 
@@ -241,6 +243,19 @@ select option{background:#1c1c20;}
     </div>
 
     <div id="gastos-list"></div>
+  </div>
+
+  <!-- EGRESOS (gastos variables) -->
+  <div class="sec">
+    <div class="sec-hd">
+      <div class="sec-title"><span class="ic">💸</span> Egresos del día</div>
+      <button class="add-btn" style="width:auto;padding:7px 13px;font-size:13px;" onclick="openEgreso()">+ Agregar</button>
+    </div>
+    <div class="glass" style="padding:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text3);">Total gastado suelto</span>
+      <b style="font-family:var(--mono);font-size:17px;color:var(--gold);" id="egreso-total">$0</b>
+    </div>
+    <div id="egresos-list"></div>
   </div>
 
   <!-- BILLETERAS -->
@@ -300,7 +315,7 @@ if(tg){tg.ready();tg.expand();}
 function safeSave(key,d){const j=JSON.stringify(d);try{localStorage.setItem(key,j);}catch(e){}if(tg?.CloudStorage&&j.length<4000)tg.CloudStorage.setItem(key,j,()=>{});}
 function leerAmbas(key,cb){let l=null;try{l=JSON.parse(localStorage.getItem(key)||'null');}catch(e){}if(tg?.CloudStorage){tg.CloudStorage.getItem(key,(e,v)=>{let n=null;if(!e&&v){try{n=JSON.parse(v);}catch(x){}}cb(l,n);});}else cb(l,null);}
 
-let data={ingresos:[],gastos:[],wallets:[],deudas:[],subs:[],inversiones:[],variables:[]};
+let data={ingresos:[],gastos:[],egresos:[],wallets:[],deudas:[],subs:[],inversiones:[],variables:[]};
 let listo=false;
 let extraTab='inv';
 const TRM=4100;
@@ -325,9 +340,10 @@ document.getElementById('hdr-fecha').textContent=`${diasS[hoy.getDay()]} ${hoy.g
 function renderAll(){
   const totalIng=data.ingresos.reduce((s,i)=>s+toCOP(Number(i.monto)||0,i.moneda),0);
   const totalFijo=data.gastos.reduce((s,g)=>s+(Number(g.monto)||0),0);
+  const totalEgreso=data.egresos.reduce((s,e)=>s+(Number(e.monto)||0),0);
   const pagado=data.gastos.filter(g=>g.pagado).reduce((s,g)=>s+(Number(g.monto)||0),0);
   const pend=totalFijo-pagado;
-  const disp=totalIng-totalFijo;
+  const disp=totalIng-totalFijo-totalEgreso;
   const totalDeuda=data.deudas.reduce((s,d)=>s+(Number(d.saldo)||0),0);
 
   // Hero
@@ -335,6 +351,8 @@ function renderAll(){
   document.getElementById('hero-disp').className='hero-value '+(disp>=0?'pos':'neg');
   document.getElementById('hero-ing').textContent=fmtCOP(totalIng);
   document.getElementById('hero-fijo').textContent=fmtCOP(totalFijo);
+  const heroEg=document.getElementById('hero-egreso');
+  if(heroEg)heroEg.textContent=fmtCOP(totalEgreso);
 
   // Metrics
   document.getElementById('m-ing').textContent=fmtCOP(totalIng);
@@ -348,7 +366,7 @@ function renderAll(){
   document.getElementById('gp-paid').textContent=fmtCOP(pagado);
   document.getElementById('gp-pend').textContent=fmtCOP(pend);
 
-  renderGastos();renderWallets();renderDeudas();renderIngresos();renderExtra();
+  renderGastos();renderEgresos();renderWallets();renderDeudas();renderIngresos();renderExtra();
 }
 
 function renderGastos(){
@@ -368,7 +386,17 @@ function renderGastos(){
     </div>`).join(''):'<div class="glass" style="padding:18px;"><div class="empty">Sin gastos obligatorios. Agrega los que pagas cada mes.</div></div>';
 }
 
-function renderWallets(){
+function renderEgresos(){
+  const total=data.egresos.reduce((s,e)=>s+(Number(e.monto)||0),0);
+  document.getElementById('egreso-total').textContent=fmtCOP(total);
+  const arr=[...data.egresos].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  document.getElementById('egresos-list').innerHTML=arr.length?arr.map(e=>`
+    <div class="glass li" style="border-left:3px solid var(--gold);">
+      <div class="li-info"><div class="li-name">${e.nombre}</div><div class="li-meta">${e.fecha?fmtF(e.fecha):''}${e.cat?' · '+e.cat:''}</div></div>
+      <div class="li-right"><div class="li-val" style="color:var(--gold)">−${fmtCOP(e.monto)}</div><button class="li-del" onclick="editEgreso('${e.id}')">✎</button><button class="li-del" onclick="delItem('egresos','${e.id}')">✕</button></div>
+    </div>`).join(''):'<div class="glass" style="padding:18px;"><div class="empty">Sin egresos hoy. Registra gastos sueltos del día a día.</div></div>';
+}
+function fmtF(f){if(!f)return'';const[y,m,d]=f.split('-');return`${d}/${m}`;}
   const colors=['wc-blue','wc-green','wc-purple','wc-orange','wc-accent'];
   const icons={'nequi':'💜','daviplata':'❤️','bancolombia':'💛','efectivo':'💵','binance':'🟡','usdt':'🟢','usdc':'🔵'};
   let total=0;
@@ -467,7 +495,31 @@ function saveGasto(id){
   saveAll();closeModal();renderAll();toast('Guardado ✓','ok');
 }
 
-// WALLET
+// EGRESO (gasto variable del día)
+function openEgreso(id){
+  const e=id?data.egresos.find(x=>x.id===id):{};
+  showModal(id?'Editar egreso':'Nuevo egreso',`
+    <div class="field"><label class="flabel">¿En qué gastaste?</label><input id="e-nombre" value="${e.nombre||''}" placeholder="Almuerzo, gasolina, mercado..."/></div>
+    <div class="frow">
+      <div class="field"><label class="flabel">Monto (COP)</label><input id="eg-monto" type="number" inputmode="numeric" value="${e.monto||''}" placeholder="0"/></div>
+      <div class="field"><label class="flabel">Fecha</label><input id="eg-fecha" type="date" value="${e.fecha||new Date().toISOString().split('T')[0]}"/></div>
+    </div>
+    <div class="field"><label class="flabel">Categoría (opcional)</label><input id="eg-cat" value="${e.cat||''}" placeholder="Comida, transporte, ocio..."/></div>
+    <button class="btn-save" style="background:linear-gradient(90deg,var(--gold),var(--orange));color:#3a2c00;" onclick="saveEgreso('${id||''}')">${id?'Guardar cambios':'Agregar egreso'}</button>
+    ${id?`<button class="add-btn" style="margin-top:10px;color:var(--red);border-color:rgba(255,69,58,0.3)" onclick="delItem('egresos','${id}');closeModal();">Eliminar egreso</button>`:''}
+  `);
+}
+function editEgreso(id){openEgreso(id);}
+function saveEgreso(id){
+  const nombre=document.getElementById('e-nombre').value.trim();
+  const monto=parseFloat(document.getElementById('eg-monto').value)||0;
+  const fecha=document.getElementById('eg-fecha').value;
+  const cat=document.getElementById('eg-cat').value.trim();
+  if(!nombre){toast('¿En qué gastaste?','err');return;}
+  if(id){const e=data.egresos.find(x=>x.id===id);Object.assign(e,{nombre,monto,fecha,cat});}
+  else data.egresos.push({id:uid(),nombre,monto,fecha,cat});
+  saveAll();closeModal();renderAll();toast('Egreso registrado ✓','ok');
+}
 function openWallet(id){
   const w=id?data.wallets.find(x=>x.id===id):{};
   showModal(id?'Editar billetera':'Nueva billetera',`
@@ -605,6 +657,7 @@ function exportCSV(){
   const rows=[['Tipo','Nombre','Monto','Moneda/Estado','Extra']];
   data.ingresos.forEach(i=>rows.push(['Ingreso',i.nombre,i.monto,i.moneda,i.nota||'']));
   data.gastos.forEach(g=>rows.push(['Gasto obligatorio',g.nombre,g.monto,g.pagado?'PAGADO':'PENDIENTE','día '+(g.dia||'')]));
+  data.egresos.forEach(e=>rows.push(['Egreso variable',e.nombre,e.monto,e.fecha||'',e.cat||'']));
   data.wallets.forEach(w=>rows.push(['Billetera',w.nombre,w.saldo,w.moneda,'']));
   data.deudas.forEach(d=>rows.push(['Deuda',d.nombre,d.saldo,'falta de '+d.total,d.acreedor||'']));
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -615,7 +668,7 @@ function exportCSV(){
 
 // ═══════════ INIT con merge anti-pérdida ═══════════
 leerAmbas('fd_v2',(local,nube)=>{
-  const base={ingresos:[],gastos:[],wallets:[],deudas:[],subs:[],inversiones:[],variables:[]};
+  const base={ingresos:[],gastos:[],egresos:[],wallets:[],deudas:[],subs:[],inversiones:[],variables:[]};
   const L=(local&&typeof local==='object')?local:base;
   const N=(nube&&typeof nube==='object')?nube:base;
   Object.keys(base).forEach(k=>{ data[k]=mergeArr(L[k],N[k]); });
